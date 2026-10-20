@@ -1,8 +1,8 @@
 # Apertus Nash
 
-[![Apertus Nash: watch the 48-second introduction](assets/apertus_nash_poster.png)](assets/apertus_nash.mp4)
+[![Apertus Nash: click to watch the 48-second introduction with sound](assets/apertus_nash_preview.gif)](assets/apertus_nash.mp4)
 
-*▶ [Watch the 48-second introduction](assets/apertus_nash.mp4) (with sound).*
+*▶ [Watch the full 48-second introduction](assets/apertus_nash.mp4) (with sound).*
 
 > [!NOTE]
 > **A note from the author.** This is an experiment, not a finished model. Apertus Nash was trained on a single DGX Spark
@@ -154,6 +154,6 @@ data/             nash/, synthetic/, eval/, mix3d/ (see Data)
 src/rlaif/        trainer: sft.py (SFT), train.py (GRPO), policy.py, rollout.py (vLLM), structured.py (answer format)
 reward_service/   reward service: server.py, reward.py, reward_prompt.md (rubric), grade_answers.py (exact grader)
 scripts/          build_mix3d.py, merge_adapter.py
-assets/           introduction video, cover image, side-by-side example PDFs
+assets/           introduction video, animated preview, 4K cover image, side-by-side example PDFs
 tests/            unit tests (./rlaif test)
 ```
