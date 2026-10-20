@@ -1,0 +1,37 @@
+# Stage 1: LoRA SFT on mix3d, broad reasoning data (science, chat, math, instruction following, code; ~26% non-English).
+# 87,030 rows (86,630 train / 400 val), every example <= 4,096 tokens. Build the data first: python scripts/build_mix3d.py
+# The original run stopped at step 845 of 5,415; stage 2 continues from the step-845 adapter on the rows not yet seen.
+#   ./rlaif sft --config configs/1_sft_mix3d_stage1.yaml
+schema_version: 1
+
+model:
+  id: swiss-ai/Apertus-v1.5-8B
+  revision: a411d838600baf0e3635a3daf66fb7c55fc97bb6
+  lora_rank: 64
+  lora_alpha: 128
+  lora_dropout: 0.0
+  thinking: true
+  gradient_checkpointing: true
+  logprob_chunk_tokens: 1024
+
+data:
+  path: /app/data/mix3d/stage1.jsonl
+  train_splits: [train]
+  val_splits: [val]
+  system_prompt: "You are Apertus Euler, an AI model built on the open Apertus model and optimized for mathematics and the sciences."
+  end_token: "<|assistant_end|>"
+  max_seq_tokens: 4096
+
+train:
+  seed: 42
+  epochs: 1
+  batch_examples: 16
+  learning_rate: 5.0e-5
+  min_lr_ratio: 0.1                # cosine decay to 10% of the peak
+  warmup_steps: 3
+  shuffle_window: 20000
+  eval_every_steps: 100
+  checkpoint_every_steps: 5
+  keep_checkpoints: 3              # rolling last 3; the best-validation adapter is kept separately in best/
+  output_dir: /runs
+  run_name: nash-sft-mix3d-stage1

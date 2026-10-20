@@ -1,0 +1,92 @@
+# Stage 4: GRPO (Dr. GRPO) on the 1,036 training problems of the Nash set (data/nash/rlaif.jsonl), 150 updates (about 1.2 epochs).
+# The reward comes from the reward service (reward_service/): a DeepSeek agent scores each group of 8 answers against the verified
+# reference, using facts the service measures exactly (structured-answer check, repetition, reply defects). The rubric is
+# reward_service/reward_prompt.md. The original run started on an earlier rubric that was revised during the run (see README).
+# Prompt <= 1,280 tokens and completion <= 2,816 tokens, so every sequence fits in 4,096.
+#   ./rlaif rl --config configs/4_rl_v3.yaml --init-adapter /runs/nash-sft/best/adapter
+schema_version: 1
+
+model:
+  id: swiss-ai/Apertus-v1.5-8B
+  revision: a411d838600baf0e3635a3daf66fb7c55fc97bb6
+  lora_rank: 64
+  lora_alpha: 128
+  lora_dropout: 0.0
+  thinking: true
+  gradient_checkpointing: true
+  logprob_chunk_tokens: 1024
+
+rollout:
+  gpu_memory_utilization: 0.50
+  max_num_seqs: 64
+  temperature: 1.0                 # on-policy sampling, top_p 1.0, top_k off
+  top_p: 1.0
+  top_k: -1
+  parity_tolerance: 0.08           # trainer vs. vLLM log-prob agreement (fp8 KV cache); real sync bugs are > 0.3
+  parity_check_every: 25
+  vllm_extra_kwargs:
+    kv_cache_dtype: fp8
+
+train:
+  seed: 42
+  max_updates: 150
+  prompts_per_update: 8
+  generations_per_prompt: 8
+  max_prompt_tokens: 1280
+  max_completion_tokens: 2816
+  learning_rate: 1.0e-5
+  warmup_updates: 5
+  max_grad_norm: 1.0
+  ppo_epochs: 1
+  clip_eps_low: 0.2
+  clip_eps_high: 0.28
+  truncated: penalize
+  checkpoint_every: 5
+  keep_checkpoints: 3
+  eval_every: 0
+  eval_problems: 25
+  output_dir: /runs
+  run_name: nash-rl-v3
+  max_hours: 0
+
+judge:
+  backend: deepseek                # selects the DeepSeek code path; the reward calls themselves are made by the reward service
+  deepseek_model: deepseek-flash
+  deepseek_effort: none
+  deepseek_max_tokens: 700
+  deepseek_key_path: /run/secrets/deepseek_key
+  max_concurrency: 8
+  timeout_s: 180
+  retries: 3
+  max_failed_groups_fraction: 0.5
+  max_thinking_chars: 12000
+  max_cost_usd: 0                  # the reward service spend guard below applies
+  min_balance_usd: 1.0
+
+reward:
+  max_steps: 48
+
+data:
+  sources: [nash]
+  nash_path: data/nash/rlaif.jsonl
+  answer_format: plain
+  reasoning_format: prose
+  cache_dir: /runs/data
+  policy_prompt_path: prompts/user_message.txt   # bare problem; the answer-shape instructions are added in code (rlaif.structured.policy_problem)
+  policy_system_prompt: "You are Apertus Nash, a general-purpose AI assistant built on the open Apertus model, with particular strengths in mathematics, statistics, economics, and clear explanation. Be accurate and concise, never invent facts or sources, and say so when you are unsure."
+
+reward_v2:
+  enabled: false
+
+reward_v3:
+  enabled: true
+  url: http://reward:8090
+  timeout_s: 900
+  max_cost_usd: 12
+  negative_beta: 1.0
+  flat_group_eps: 0.05             # groups whose rewards are all within this of each other carry no signal and are dropped
+
+memory:
+  training_ceiling_bytes: 108000000000
+  min_host_available_bytes: 6000000000
+  sample_interval_s: 1.0

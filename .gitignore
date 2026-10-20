@@ -1,0 +1,9 @@
+secrets/
+runs/
+data/mix3d/stage1.jsonl
+data/mix3d/stage2.jsonl
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+.idea/

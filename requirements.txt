@@ -1,0 +1,10 @@
+# Installed ON TOP of the Swiss Apertus image (torch / transformers / vllm come from the base
+# and must not change; the Dockerfile enforces this). After the first good build, replace these
+# with the exact versions from /opt/rlaif/pip-freeze.txt in the image.
+peft
+accelerate
+datasets
+math-verify[antlr4_13_2]
+httpx
+pyyaml
+pytest

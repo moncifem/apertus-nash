@@ -1,0 +1,22 @@
+{
+  "model": "deepseek-flash",
+  "base_url": "https://api.deepseek.com",
+  "reasoning_effort": "none",
+  "concurrency": 8,
+  "retries": 3,
+  "timeout_s": 240,
+  "max_steps": 3,
+  "max_repairs": 2,
+  "max_tokens_per_turn": 1200,
+  "budget_tokens_per_group": 90000,
+  "window_exchanges": 2,
+  "problem_chars": 6000,
+  "reference_chars": 4000,
+  "thinking_chars": 14000,
+  "reply_chars": 5000,
+  "reward_min": -2.0,
+  "reward_max": 1.5,
+  "price_hit": 0.006,
+  "price_miss": 0.3,
+  "price_out": 1.2
+}

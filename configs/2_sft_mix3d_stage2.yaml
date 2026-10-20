@@ -1,0 +1,38 @@
+# Stage 2: continues stage 1 from its step-845 adapter: 73,328 train rows = the mix3d rows stage 1 had not reached plus 373 Nash rows
+# (400 val rows, unchanged).
+# Same settings as stage 1, at the learning rate stage 1 had reached. The original run was stopped at step 3,214 of 4,583; its
+# step-3214 adapter starts stage 3.
+#   ./rlaif sft --config configs/2_sft_mix3d_stage2.yaml --init-adapter /runs/nash-sft-mix3d-stage1/checkpoints/step-000845/adapter
+schema_version: 1
+
+model:
+  id: swiss-ai/Apertus-v1.5-8B
+  revision: a411d838600baf0e3635a3daf66fb7c55fc97bb6
+  lora_rank: 64
+  lora_alpha: 128
+  lora_dropout: 0.0
+  thinking: true
+  gradient_checkpointing: true
+  logprob_chunk_tokens: 1024
+
+data:
+  path: /app/data/mix3d/stage2.jsonl
+  train_splits: [train]
+  val_splits: [val]
+  system_prompt: "You are Apertus Euler, an AI model built on the open Apertus model and optimized for mathematics and the sciences."
+  end_token: "<|assistant_end|>"
+  max_seq_tokens: 4096
+
+train:
+  seed: 42
+  epochs: 1
+  batch_examples: 16
+  learning_rate: 4.7e-5
+  min_lr_ratio: 0.1
+  warmup_steps: 3
+  shuffle_window: 20000
+  eval_every_steps: 100
+  checkpoint_every_steps: 5
+  keep_checkpoints: 3
+  output_dir: /runs
+  run_name: nash-sft-mix3d-stage2

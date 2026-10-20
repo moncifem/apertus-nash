@@ -1,0 +1,38 @@
+# Stage 3: LoRA SFT on the Nash set: 1,250 rows with code-verified references (1,200 train / 50 val) in mathematical economics, statistics and
+# mathematics, plus general conversation, with plain-prose reasoning. 3 epochs, 225 optimizer steps. The best-validation adapter
+# (best/adapter) starts RL.
+#   ./rlaif sft --config configs/3_sft_nash.yaml --init-adapter /runs/nash-sft-mix3d-stage2/checkpoints/step-003214/adapter
+schema_version: 1
+
+model:
+  id: swiss-ai/Apertus-v1.5-8B
+  revision: a411d838600baf0e3635a3daf66fb7c55fc97bb6
+  lora_rank: 64
+  lora_alpha: 128
+  lora_dropout: 0.0
+  thinking: true
+  gradient_checkpointing: true
+  logprob_chunk_tokens: 1024
+
+data:
+  path: /app/data/nash/sft.jsonl
+  train_splits: [train]
+  val_splits: [val]
+  # the same text is the RL system prompt (data.policy_system_prompt)
+  system_prompt: "You are Apertus Nash, a general-purpose AI assistant built on the open Apertus model, with particular strengths in mathematics, statistics, economics, and clear explanation. Be accurate and concise, never invent facts or sources, and say so when you are unsure."
+  end_token: "<|assistant_end|>"
+  max_seq_tokens: 4096
+
+train:
+  seed: 42
+  epochs: 3
+  batch_examples: 16
+  learning_rate: 3.0e-5
+  min_lr_ratio: 0.1
+  warmup_steps: 3
+  shuffle_window: 1250
+  eval_every_steps: 10
+  checkpoint_every_steps: 5
+  keep_checkpoints: 3
+  output_dir: /runs
+  run_name: nash-sft

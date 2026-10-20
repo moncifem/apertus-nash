@@ -1,0 +1,90 @@
+# Stage 5: continues RL from the final stage-4 adapter for 518 more updates = 4 epochs of the 1,036 training problems (the sampler
+# reshuffles every epoch; seed 43 so the order differs from stage 4). Same reward service; the shipped rubric is the one this run used
+# from update 31 on. The step-517 adapter is the released Apertus Nash.
+#   ./rlaif rl --config configs/5_rl_v4.yaml --init-adapter /runs/nash-rl-v3/checkpoints/step-000149/adapter
+schema_version: 1
+
+model:
+  id: swiss-ai/Apertus-v1.5-8B
+  revision: a411d838600baf0e3635a3daf66fb7c55fc97bb6
+  lora_rank: 64
+  lora_alpha: 128
+  lora_dropout: 0.0
+  thinking: true
+  gradient_checkpointing: true
+  logprob_chunk_tokens: 1024
+
+rollout:
+  gpu_memory_utilization: 0.50
+  max_num_seqs: 64
+  temperature: 1.0                 # on-policy sampling, top_p 1.0, top_k off
+  top_p: 1.0
+  top_k: -1
+  parity_tolerance: 0.08           # trainer vs. vLLM log-prob agreement (fp8 KV cache); real sync bugs are > 0.3
+  parity_check_every: 25
+  vllm_extra_kwargs:
+    kv_cache_dtype: fp8
+
+train:
+  seed: 43
+  max_updates: 518                 # 4 epochs
+  prompts_per_update: 8
+  generations_per_prompt: 8
+  max_prompt_tokens: 1280
+  max_completion_tokens: 2816
+  learning_rate: 1.0e-5
+  warmup_updates: 5
+  max_grad_norm: 1.0
+  ppo_epochs: 1
+  clip_eps_low: 0.2
+  clip_eps_high: 0.28
+  truncated: penalize
+  checkpoint_every: 10
+  keep_checkpoints: 20
+  eval_every: 0
+  eval_problems: 25
+  output_dir: /runs
+  run_name: nash-rl-v4
+  max_hours: 0
+
+judge:
+  backend: deepseek                # selects the DeepSeek code path; the reward calls themselves are made by the reward service
+  deepseek_model: deepseek-flash
+  deepseek_effort: none
+  deepseek_max_tokens: 700
+  deepseek_key_path: /run/secrets/deepseek_key
+  max_concurrency: 8
+  timeout_s: 180
+  retries: 3
+  max_failed_groups_fraction: 0.5
+  max_thinking_chars: 12000
+  max_cost_usd: 0                  # the reward service spend guard below applies
+  min_balance_usd: 1.0
+
+reward:
+  max_steps: 48
+
+data:
+  sources: [nash]
+  nash_path: data/nash/rlaif.jsonl
+  answer_format: plain
+  reasoning_format: prose
+  cache_dir: /runs/data
+  policy_prompt_path: prompts/user_message.txt   # bare problem; the answer-shape instructions are added in code (rlaif.structured.policy_problem)
+  policy_system_prompt: "You are Apertus Nash, a general-purpose AI assistant built on the open Apertus model, with particular strengths in mathematics, statistics, economics, and clear explanation. Be accurate and concise, never invent facts or sources, and say so when you are unsure."
+
+reward_v2:
+  enabled: false
+
+reward_v3:
+  enabled: true
+  url: http://reward:8090
+  timeout_s: 900
+  max_cost_usd: 40
+  negative_beta: 1.0
+  flat_group_eps: 0.05             # groups whose rewards are all within this of each other carry no signal and are dropped
+
+memory:
+  training_ceiling_bytes: 108000000000
+  min_host_available_bytes: 6000000000
+  sample_interval_s: 1.0

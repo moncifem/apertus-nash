@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# Launcher for the Apertus Nash training stack (LoRA SFT + GRPO with a reward service), built for an NVIDIA DGX Spark (aarch64).
+set -euo pipefail
+cd "$(dirname "$0")"
+
+usage() {
+  cat <<'EOF'
+./rlaif doctor                                    check docker, GPU and secrets
+./rlaif build                                     build the trainer and reward images
+./rlaif test                                      unit tests inside the trainer image (no GPU needed)
+./rlaif sft-dry --config FILE                     tokenise the SFT data and report (no GPU work)
+./rlaif sft     --config FILE [--init-adapter D]  LoRA SFT (needs the GPU to itself)
+./rlaif rl      --config FILE [--init-adapter D]  GRPO with the reward service (starts it)
+./rlaif status | logs | stop | down
+EOF
+}
+
+CONFIG=""
+EXTRA=()
+parse() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --config) CONFIG="$2"; shift 2 ;;
+      *) EXTRA+=("$1"); shift ;;
+    esac
+  done
+  [[ -n "$CONFIG" ]] || { echo "--config FILE is required"; exit 1; }
+}
+
+doctor() {
+  local ok=1
+  command -v docker >/dev/null || { echo "FAIL docker not found"; ok=0; }
+  docker compose version >/dev/null 2>&1 || { echo "FAIL docker compose v2 not found"; ok=0; }
+  [[ "$(uname -m)" == "aarch64" ]] || echo "WARN arch $(uname -m): this stack targets the DGX Spark (aarch64)"
+  [[ -s secrets/hf_token ]] || { echo "FAIL secrets/hf_token missing (Hugging Face token for swiss-ai/Apertus-v1.5-8B)"; ok=0; }
+  if command -v nvidia-smi >/dev/null; then nvidia-smi --query-gpu=name,driver_version --format=csv,noheader; else echo "WARN nvidia-smi not found"; fi
+  awk '/MemTotal|MemAvailable/ {printf "%s %.1f GB\n", $1, $2/1e6}' /proc/meminfo 2>/dev/null || true
+  [[ $ok == 1 ]] && echo "doctor: OK" || { echo "doctor: FAILED"; exit 1; }
+}
+
+# a stopped container from an earlier run keeps its name: remove it before reusing the name
+clear_name() { [[ "$(docker inspect -f '{{.State.Running}}' "$1" 2>/dev/null)" == false ]] && docker rm "$1" >/dev/null || true; }
+
+cmd="${1:-help}"; shift || true
+case "$cmd" in
+  doctor) doctor ;;
+  build)  docker compose build ;;
+  test)   docker compose run --rm --no-deps -v "$PWD/tests:/app/tests:ro" trainer python3 -m pytest -q /app/tests ;;
+  sft-dry)
+    parse "$@"
+    docker compose run --rm --no-deps trainer python3 -m rlaif.sft --config "$CONFIG" --dry-run "${EXTRA[@]}" ;;
+  sft)
+    parse "$@"; doctor; mkdir -p runs
+    clear_name apertus-nash-sft
+    docker compose run -d --no-deps --name apertus-nash-sft trainer python3 -m rlaif.sft --config "$CONFIG" "${EXTRA[@]}"
+    sleep 5; docker logs -f apertus-nash-sft ;;
+  rl)
+    parse "$@"; doctor; mkdir -p runs
+    [[ -s secrets/deepseek_key ]] || { echo "FAIL secrets/deepseek_key missing (the reward service needs a DeepSeek API key)"; exit 1; }
+    docker compose up -d --build reward
+    clear_name apertus-nash-trainer
+    docker compose run -d --no-deps --name apertus-nash-trainer trainer python3 -m rlaif.train --config "$CONFIG" "${EXTRA[@]}"
+    sleep 5; docker logs -f apertus-nash-trainer ;;
+  status)
+    docker ps --filter name=apertus-nash
+    for f in runs/*/metrics.jsonl; do [[ -f "$f" ]] && { echo "== $f"; tail -n 1 "$f" | cut -c1-400; }; done ;;
+  logs)
+    for c in apertus-nash-trainer apertus-nash-sft; do
+      [[ "$(docker inspect -f '{{.State.Running}}' "$c" 2>/dev/null)" == true ]] && exec docker logs -f --tail 200 "$c"
+    done
+    echo "no training container is running" ;;
+  stop) docker stop -t 900 apertus-nash-trainer apertus-nash-sft 2>/dev/null || true; docker compose stop reward ;;   # checkpoints, then exits
+  down) docker compose down ;;   # keeps the HF cache volume and ./runs
+  *) usage ;;
+esac

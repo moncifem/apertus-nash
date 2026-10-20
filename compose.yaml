@@ -1,0 +1,71 @@
+name: apertus-nash
+
+x-gpu: &gpu
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            device_ids: ["0"]
+            capabilities: [gpu]
+
+services:
+  reward:
+    # Reward service (reward_service/). The trainer POSTs groups of answers; the service measures the exact facts and a DeepSeek agent
+    # decides the rewards. Code, rubric and config are bind-mounted read-only and re-read on every request, so editing them on the host
+    # changes the running reward without restarting anything. It holds the DeepSeek key; the model under training never reaches it.
+    build:
+      context: ./reward_service
+    image: apertus-nash-reward:local
+    container_name: apertus-nash-reward
+    restart: unless-stopped
+    user: "${REWARD_UID:-1000}:${REWARD_GID:-1000}"   # must be able to read secrets/deepseek_key (mode 600): use its owner
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 256
+    mem_limit: 2g
+    secrets: [deepseek_key]
+    volumes:
+      - ./reward_service:/app:ro
+    networks: [nash]
+
+  trainer:
+    build:
+      context: .
+      dockerfile: docker/trainer.Dockerfile
+      args:
+        BASE_IMAGE: ${POLICY_IMAGE:-ghcr.io/swiss-ai/vllm_apertus_1.5_release:latest-arm64}
+    image: apertus-nash-trainer:local
+    environment:
+      HF_HOME: /hf
+      HF_TOKEN_PATH: /run/secrets/hf_token
+      VLLM_ENABLE_V1_MULTIPROCESSING: "0"
+      VLLM_ALLOW_INSECURE_SERIALIZATION: "1"
+      PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
+      TOKENIZERS_PARALLELISM: "false"
+    secrets: [hf_token, deepseek_key]
+    volumes:
+      - hf-cache:/hf
+      - ./runs:/runs
+      - ./configs:/app/configs:ro
+      - ./src:/app/src:ro
+      - ./prompts:/app/prompts:ro
+      - ./data:/app/data:ro
+      - ./reward_service:/app/reward_service:ro
+    shm_size: 8gb
+    stop_grace_period: 15m
+    networks: [nash]
+    <<: *gpu
+
+secrets:
+  hf_token:
+    file: ./secrets/hf_token
+  deepseek_key:
+    file: ./secrets/deepseek_key     # RL only
+
+volumes:
+  hf-cache:
+
+networks:
+  nash:
